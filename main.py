@@ -17,7 +17,6 @@ log = logging.getLogger("trading bot")
 BUCKET_NAME = 'trading-bot-data-bucket'
 FILE_NAME = 'config.json'
 
-
 def build_history(config):
     log.info('***** STARTING BUILDING HISTORICAL DATA *****')
 
@@ -43,8 +42,8 @@ def build_history(config):
 
     # Checking that historical table exists
     client = bigquery.Client()
-    dataset = client.dataset(config['dataset_id'])
-    table_ref = dataset.table(config['historical_table_id'])
+    dataset = client.dataset(config['BIGQUERY']['dataset_id'])
+    table_ref = dataset.table(config['BIGQUERY']['historical_table_id'])
 
     hist_table_exists = utb.check_gbq_table_exists(client=client,
                                                    table_ref=table_ref)
@@ -57,12 +56,14 @@ def build_history(config):
         latest_unix_date = utb.get_latest_unix_date_bq(dataset_id=config['BIGQUERY']['dataset_id'],
                                                        table_id=config['BIGQUERY']['historical_table_id'])
 
-        # Check if the latest date in GBQ is today's date. If it is then we do not need to update the table anymore
+        # Check if the latest date in GBQ is one day before today's date. If it is then we do not need to update the
+        # table anymore
         today = date.today().strftime("%Y-%m-%d")
         latest_bigquery_date = utb.unix_timestamp_to_date(latest_unix_date)
+        latest_bigquery_date_plus_one_day = utb.unix_timestamp_to_date(latest_unix_date + 60*60*24*1000)
 
-        if today == latest_bigquery_date:
-            log.info('No need to update historical share prices - latest date is already today {}!'.format(today))
+        if today == latest_bigquery_date_plus_one_day:
+            log.info('No need to update historical share prices - latest date is already last trading day {}!'.format(latest_bigquery_date))
             return
         else:
             log.info('Last date in GBQ is {}; updating historical share prices...'.format(latest_bigquery_date))
@@ -76,10 +77,17 @@ def build_history(config):
                                           api_key=config['AMERITRADE']['consumer_key'],
                                           stock_history_params=stock_history_params)
 
+    log.debug('df: \n{}'.format(df))
     log.debug('shape of df before removing nans: {}'.format(df.shape))
     log.debug('removing nans...')
-    df = df[df['close'].notnull()].reset_index(drop=True)
+    df = df[df['closePrice'].notnull()].reset_index(drop=True)
     log.debug('shape of df after removing nans: {}'.format(df.shape))
+
+    log.debug('Loading data to bigquery...')
+    # utb.load_to_bigquery(df,
+    #                      dataset_id=config['BIGQUERY']['dataset_id'],
+    #                      table_id=config['BIGQUERY']['historical_table_id'])
+
     log.info('***** FINISHED BUILDING HISTORICAL DATA *****')
 
 
@@ -137,25 +145,44 @@ def buy_sell(config):
     )
     log.info(' stocks to sell: \n{}'.format(df_sell_final))
 
-    if config['ALPACA']['auto_trade']:
-        log.info('auto trade is set to True. Automatically sending buy and sell orders to alpaca...')
+    api = tradeapi.REST(
+        config['ALPACA']['alpaca_api_key'],
+        config['ALPACA']['alpaca_secret_key'],
+        config['ALPACA']['base_url'],
+        'v2'
+    )
 
-        api = tradeapi.REST(
-            config['ALPACA']['alpaca_api_key'],
-            config['ALPACA']['alpaca_secret_key'],
-            config['ALPACA']['base_url'],
-            'v2'
-        )
+    if df_buy_new is not None:
+        if config['ALPACA']['auto_trade']:
+            utb.order_stock(df=df_buy_new,
+                            api=api,
+                            side='buy')
+            log.debug('buy order sent')
+        else:
+            buy_choice = input("do you want to confirm buy (yes/no)?")
+            if buy_choice == 'yes':
+                utb.order_stock(df=df_buy_new,
+                                api=api,
+                                side='buy')
+                log.debug('buy order sent')
+    else:
+        log.debug('No stocks to purchase')
 
-        utb.order_stock(df=df_buy_new,
-                        api=api,
-                        side='buy')
-        log.debug('buy order sent')
-
-        utb.order_stock(df=df_sell_final,
-                        api=api,
-                        side='sell')
-        log.debug('sell order sent')
+    if df_sell_final is not None:
+        if config['ALPACA']['auto_trade']:
+            utb.order_stock(df=df_sell_final,
+                            api=api,
+                            side='sell')
+            log.debug('sell order sent')
+        else:
+            sell_choice = input("do you want to confirm sell (yes/no)?")
+            if sell_choice == 'yes':
+                utb.order_stock(df=df_sell_final,
+                                api=api,
+                                side='sell')
+                log.debug('sell order sent')
+    else:
+        log.debug('No stocks to purchase')
 
     log.info('***** FINISHED OPTIMISING PORTFOLIO *****')
 

@@ -13,3 +13,4 @@ google-cloud-storage
 oauth2client
 alpaca_trade_api
 PyPortfolioOpt
+quandl

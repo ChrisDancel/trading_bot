@@ -23,7 +23,7 @@ from pypfopt.discrete_allocation import DiscreteAllocation, get_latest_prices
 
 from oauth2client.client import GoogleCredentials
 
-path_to_creds = os.path.join(os.getcwd(), '..', 'configs', 'trading-bot-3dabe112fe73.json')
+path_to_creds = os.path.join(os.getcwd(), 'configs', 'trading-bot-3dabe112fe73.json')
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = path_to_creds
 
 today = datetime.today().astimezone(pytz.timezone("America/New_York"))
@@ -243,7 +243,6 @@ def unix_timestamp_to_date(uts):
         return datetime.utcfromtimestamp(uts).strftime('%Y-%m-%d')
     else:
         raise ValueError('unix timestamp input looks wrong: {}'.format(uts))
-
 
 
 def check_gbq_table_exists(client, table_ref):
