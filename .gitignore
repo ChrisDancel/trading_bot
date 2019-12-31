@@ -1,0 +1,8 @@
+.idea/
+configs/
+!configs/config.json.dist
+data/*
+!data/.gitkeep
+.ipynb_checkpoints
+*.ipynb_checkpoints
+utils/__pycache__/

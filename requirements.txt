@@ -1,0 +1,15 @@
+pandas
+numpy
+matplotlib
+jupyter
+beautifulsoup4
+request
+pyarrow
+sklearn
+google-cloud
+google_api_python_client
+google-cloud-bigquery
+google-cloud-storage
+oauth2client
+alpaca_trade_api
+PyPortfolioOpt
