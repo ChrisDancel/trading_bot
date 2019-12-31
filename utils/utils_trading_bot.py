@@ -5,10 +5,9 @@ import pandas as pd
 import numpy as np
 import pytz
 from bs4 import BeautifulSoup
-# import pyarrow
 import string
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from google.cloud import bigquery
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
@@ -24,7 +23,7 @@ from pypfopt.discrete_allocation import DiscreteAllocation, get_latest_prices
 
 from oauth2client.client import GoogleCredentials
 
-path_to_creds = "/Users/christopherdancel/Documents/github/trading_bot/configs/trading-bot-3dabe112fe73.json"
+path_to_creds = os.path.join(os.getcwd(), '..', 'configs', 'trading-bot-3dabe112fe73.json')
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = path_to_creds
 
 today = datetime.today().astimezone(pytz.timezone("America/New_York"))
