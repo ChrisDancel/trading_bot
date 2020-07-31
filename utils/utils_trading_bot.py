@@ -8,36 +8,38 @@ from bs4 import BeautifulSoup
 import string
 import time
 from datetime import datetime
-from google.cloud import bigquery
-from google.cloud import storage
-from google.cloud.exceptions import NotFound
+from pandas.io import sql
+from sqlalchemy import create_engine
+# from google.cloud import bigquery
+# from google.cloud import storage
+# from google.cloud.exceptions import NotFound
 
 from scipy import stats
 
 import alpaca_trade_api as tradeapi
 
-from pypfopt.efficient_frontier import EfficientFrontier
-from pypfopt import risk_models
-from pypfopt import expected_returns
-from pypfopt.discrete_allocation import DiscreteAllocation, get_latest_prices
+# from pypfopt.efficient_frontier import EfficientFrontier
+# from pypfopt import risk_models
+# from pypfopt import expected_returns
+# from pypfopt.discrete_allocation import DiscreteAllocation, get_latest_prices
 
-from oauth2client.client import GoogleCredentials
+# from oauth2client.client import GoogleCredentials
 
-path_to_creds = os.path.join(os.getcwd(), 'configs', 'trading-bot-3dabe112fe73.json')
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = path_to_creds
+# path_to_creds = os.path.join(os.getcwd(), 'configs', 'trading-bot-3dabe112fe73.json')
+# os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = path_to_creds
 
 today = datetime.today().astimezone(pytz.timezone("America/New_York"))
 today_fmt = today.strftime('%Y-%m-%d')
 
 
-def get_config_from_gcp(bucket_name, file_name):
-    storage_client = storage.Client()
-    bucket = storage_client.get_bucket(bucket_name)
-    blob = bucket.blob(file_name)
-    api_key = blob.download_as_string()
-    config = ast.literal_eval(api_key.decode())
+# def get_config_from_gcp(bucket_name, file_name):
+#     storage_client = storage.Client()
+#     bucket = storage_client.get_bucket(bucket_name)
+#     blob = bucket.blob(file_name)
+#     api_key = blob.download_as_string()
+#     config = ast.literal_eval(api_key.decode())
 
-    return config
+#     return config
 
 
 def get_symbols(exchange):
@@ -136,24 +138,27 @@ def quotes_history_request(stocks, api_key, **stock_history_params):
         params=params
     ).json()
 
-    if request['empty']:
-        print('error: cannot get information for symbol {}'.format(stocks))
-        df = pd.DataFrame(dict(open=[None],
-                               low=[None],
-                               closePrice=[None],
-                               volume=[None],
-                               datetime_unix=[1000],
-                               date=[today_fmt],
-                               symbol=[stocks]))
-    else:
-        df = pd.DataFrame.from_dict(request['candles'], orient='columns')
-        df = df.rename(columns={'datetime': 'datetime_unix'})
-        df['date'] = df['datetime_unix'].apply(lambda x: datetime.utcfromtimestamp(x / 1000).strftime('%Y-%m-%d'))
-        df['symbol'] = stocks
-        df = df.rename(columns={'close': 'closePrice'})
-
-    time.sleep(0.1)
-    return df
+    try:
+        if request['empty']:
+            print('error: cannot get information for symbol {}'.format(stocks))
+            df = pd.DataFrame(dict(open=[None],
+                                   low=[None],
+                                   closePrice=[None],
+                                   volume=[None],
+                                   datetime_unix=[1000],
+                                   date=[today_fmt],
+                                   symbol=[stocks]))
+        else:
+            df = pd.DataFrame.from_dict(request['candles'], orient='columns')
+            df = df.rename(columns={'datetime': 'datetime_unix'})
+            df['date'] = df['datetime_unix'].apply(lambda x: datetime.utcfromtimestamp(x / 1000).strftime('%Y-%m-%d'))
+            df['symbol'] = stocks
+            df = df.rename(columns={'close': 'closePrice'})
+        return df
+        time.sleep(0.1)
+    except KeyError as e:
+        print('error: {}'.format(e))
+        
 
 
 def clean_quotes_data(symbols_chunked, api_key):
@@ -199,41 +204,43 @@ def clean_historical_quotes_data(symbols_chunked, api_key, stock_history_params)
     return df
 
 
-def load_to_bigquery(df, dataset_id, table_id):
-    # Add to bigquery
-    client = bigquery.Client()
+# def load_to_bigquery(df, dataset_id, table_id):
+#     # Add to bigquery
+#     client = bigquery.Client()
 
-    dataset_ref = client.dataset(dataset_id)
-    table_ref = dataset_ref.table(table_id)
+#     dataset_ref = client.dataset(dataset_id)
+#     table_ref = dataset_ref.table(table_id)
 
-    job_config = bigquery.LoadJobConfig()
-    job_config.source_format = bigquery.SourceFormat.CSV
-    job_config.autodetect = True
-    job_config.ignore_unknown_values = True
-    job = client.load_table_from_dataframe(
-        df,
-        table_ref,
-        #             location='US',
-        job_config=job_config
-    )
+#     job_config = bigquery.LoadJobConfig()
+#     job_config.source_format = bigquery.SourceFormat.CSV
+#     job_config.autodetect = True
+#     job_config.ignore_unknown_values = True
+#     job = client.load_table_from_dataframe(
+#         df,
+#         table_ref,
+#         #             location='US',
+#         job_config=job_config
+#     )
 
-    job.result()
+#     job.result()
 
-    print('*** Load to bigquery finished! ***')
-
-
-def get_latest_unix_date_bq(dataset_id, table_id):
-    # Add to bigquery
-    client = bigquery.Client()
-
-    sql = """
-    select max(datetime_unix) as max_datetime_unix
-    from `{}.{}`     
-    """.format(dataset_id, table_id)
-
-    return client.query(sql).to_dataframe()['max_datetime_unix'][0]
+#     print('*** Load to bigquery finished! ***')
 
 
+# def get_latest_unix_date_bq(dataset_id, table_id):
+#     # Add to bigquery
+#     client = bigquery.Client()
+
+#     sql = """
+#     select max(datetime_unix) as max_datetime_unix
+#     from `{}.{}`     
+#     """.format(dataset_id, table_id)
+
+#     return client.query(sql).to_dataframe()['max_datetime_unix'][0]
+
+
+    
+    
 def unix_timestamp_to_date(uts):
 
     # check if uts is in milliseconds
@@ -245,42 +252,42 @@ def unix_timestamp_to_date(uts):
         raise ValueError('unix timestamp input looks wrong: {}'.format(uts))
 
 
-def check_gbq_table_exists(client, table_ref):
+# def check_gbq_table_exists(client, table_ref):
 
-    try:
-        client.get_table(table_ref)
-        return True
-    except NotFound:
-        return False
+#     try:
+#         client.get_table(table_ref)
+#         return True
+#     except NotFound:
+#         return False
 
 
-def get_historical_stockprices(config):
-    client = bigquery.Client()
+# def get_historical_stockprices(config):
+#     client = bigquery.Client()
 
-    # Load the historical stock data from BQ
-    sql_hist = """
-        SELECT
-          symbol,
-          closePrice,
-          date
-        FROM 
-          `{}.{}.{}`
-        """.format(config['BIGQUERY']['project_id'],
-                   config['BIGQUERY']['dataset_id'],
-                   config['BIGQUERY']['historical_table_id'])
+#     # Load the historical stock data from BQ
+#     sql_hist = """
+#         SELECT
+#           symbol,
+#           closePrice,
+#           date
+#         FROM 
+#           `{}.{}.{}`
+#         """.format(config['BIGQUERY']['project_id'],
+#                    config['BIGQUERY']['dataset_id'],
+#                    config['BIGQUERY']['historical_table_id'])
 
-    df = client.query(sql_hist).to_dataframe()
+#     df = client.query(sql_hist).to_dataframe()
 
-    # Convert the date column to datetime
-    # df['date'] = pd.to_datetime(df['date'])
+#     # Convert the date column to datetime
+#     # df['date'] = pd.to_datetime(df['date'])
 
-    # Sort by date (ascending) for the momentum calculation
-    df = df.sort_values(by='date').reset_index(drop=True)
+#     # Sort by date (ascending) for the momentum calculation
+#     df = df.sort_values(by='date').reset_index(drop=True)
 
-    # Rename the column
-    df = df.rename(columns={'closePrice': 'close'})
+#     # Rename the column
+#     df = df.rename(columns={'closePrice': 'close'})
 
-    return df
+#     return df
 
 
 def calc_portfolio_value(config):
@@ -472,12 +479,15 @@ def stock_diffs(df_sell, df_pf, df_buy):
         'close'
     ]]
 
+#     print('df_stock_diff: {}'.format(df_stock_diff))
     # If there's less shares compared to last week for the stocks that
     # are still in our portfolio, sell those shares
     df_stock_diff_sale = df_stock_diff.loc[df_stock_diff['share_amt_change'] < 0]
 
     # If there are stocks whose qty decreased,
     # add the df with the stocks that dropped out of the pf
+#     print('df_stock_diff_sale: {}'.format(df_stock_diff_sale))
+
     if df_stock_diff_sale.shape[0] > 0:
         if df_sell is not None:
             df_sell_final = pd.concat([df_sell, df_stock_diff_sale])
@@ -494,6 +504,8 @@ def stock_diffs(df_sell, df_pf, df_buy):
             # Turn the negative numbers into positive for the order
             df_sell_final['share_amt_change'] = np.abs(df_sell_final['share_amt_change'])
             df_sell_final = df_sell_final.rename(columns={'share_amt_change': 'qty'})
+    elif df_sell is not None:
+            df_sell_final = df_sell
     else:
         df_sell_final = None
 
@@ -523,7 +535,8 @@ def buy_new_stock(df_pf, df_buy):
     if df_buy_new.shape[0] > 0:
         df_buy_new = df_buy_new[[
             'symbol',
-            'qty_new'
+            'qty_new',
+            'close'
         ]]
         df_buy_new = df_buy_new.rename(columns={'qty_new': 'qty'})
     else:
@@ -558,3 +571,110 @@ def order_stock(df, api, side):
                 )
         except Exception:
             pass
+
+
+def portfolio_add_stock(df_pf, df_buy_stock):
+    return df_pf.append(df_buy_stock).groupby(['symbol'])['qty'].agg('sum').reset_index()
+
+
+def portfolio_remove_stock(df_pf, df_sell_stock):
+    df_sell_stock['qty'] *= -1
+    return df_pf.append(df_sell_stock).groupby(['symbol'])['qty'].agg('sum').reset_index()
+
+
+def compute_pf_value_at_date(df_pf, df_stock_hist, date):
+    date_filt = df_stock_hist['date'] == date
+    df_stock_hist_f1 = df_stock_hist[date_filt]
+
+    symbol_filt = [True if i in list(df_pf['symbol']) else False for i in df_stock_hist_f1['symbol']]
+    df_stock_hist_f2 = df_stock_hist_f1[symbol_filt]
+    #     df_pf_todays_price = df_stock_hist[date_filt & symbol_filt][['symbol', 'close']]
+
+    df_pf_todays_price = df_stock_hist_f2[['symbol', 'close']]
+
+    df_pf_with_price = pd.merge(df_pf, df_pf_todays_price, on='symbol', how='inner')
+    df_pf_with_price['market_value'] = df_pf_with_price['qty'] * df_pf_with_price['close']
+
+    portfolio_value_at_date = df_pf_with_price['market_value'].sum()
+
+    return portfolio_value_at_date, df_pf_with_price
+
+
+def create_conn(**creds_json):
+    engine = create_engine("mysql+pymysql://{user}:{pw}@localhost/{db}"
+                       .format(user=creds_json['username'],
+                               pw=creds_json['password'],
+                               db=creds_json['database']))
+    
+    return engine
+        
+def load_to_mysql(df, tablename, connection, if_exists='replace'):
+    df.to_sql(con=connection, name=tablename, if_exists=if_exists)
+    
+    
+def read_sql_to_df(sql: str, connection):
+    return pd.read_sql(sql, connection);
+
+
+def check_table_exists(conn, tablename):
+    """
+    check if a table exists in database
+    """
+    return True if tablename in conn.table_names() else False
+
+def get_latest_unix_date(conn, tablename):
+    """
+    get latest timestamp in unix format from a particular table
+    """
+    return pd.read_sql("select max(datetime_unix) from stocks.{}".format(tablename), conn).values[0][0]
+    
+    
+def add_sma(df: pd.DataFrame, 
+            col_groupby: str, 
+            col_value: str,
+            col_date: str, 
+            sma_list: list=[5, 10, 50, 100, 200]) -> pd.DataFrame:
+    
+    # sort by date
+#     df = df.sort_values(by=col_date, ascending=True).reset_index(drop=True)
+    df = df.sort_values([col_groupby, col_date], ascending=[True, True])
+    
+    # add sma
+    # smas = [5, 10, 50, 100, 200]
+    for sma in sma_list:
+        c_name = 'ma_'+str(sma)
+        df[c_name] = df.groupby(col_groupby).rolling(sma)[col_value].mean().reset_index(drop=True)
+        
+    return df
+
+
+# get crossover points
+def crossover(df, col1, col2, col_name):
+    df['df1'] = df[col1]-df[col2]
+    df['df1_yest'] = df['df1'].shift(1)
+    ind_pos_cross = (df['df1']>0) & (df['df1_yest'] < 0)
+    ind_neg_cross = (df['df1']<0) & (df['df1_yest'] > 0)
+    
+    df[col_name] = 0
+    df.loc[ind_pos_cross, col_name] = 1
+    df.loc[ind_neg_cross, col_name] = -1
+    df = df.drop(['df1', 'df1_yest'], axis=1)
+    return df
+
+
+def add_crossover_pairs(df):
+    
+    # TODO - this list is hardcoded - is there a better way to code this?
+    crossover_pairs = [[5, 10], 
+                      [10, 20], 
+                      [10, 50], 
+                      [10, 100], 
+                      [20, 50], 
+                       [20, 100], 
+                       [50, 100]]
+    
+    for p in crossover_pairs:
+        df = utb.crossover(df, 'ma_{}'.format(p[0]), 'ma_{}'.format(p[1]), 'crossover_{}_{}'.format(p[0], p[1]))
+
+    return df
+
