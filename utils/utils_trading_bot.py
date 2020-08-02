@@ -14,6 +14,7 @@ from sqlalchemy import create_engine
 # from google.cloud import storage
 # from google.cloud.exceptions import NotFound
 
+from matplotlib import pyplot as plt
 from scipy import stats
 
 import alpaca_trade_api as tradeapi
@@ -629,23 +630,23 @@ def get_latest_unix_date(conn, tablename):
     return pd.read_sql("select max(datetime_unix) from stocks.{}".format(tablename), conn).values[0][0]
     
     
-def add_sma(df: pd.DataFrame, 
-            col_groupby: str, 
-            col_value: str,
-            col_date: str, 
-            sma_list: list=[5, 10, 50, 100, 200]) -> pd.DataFrame:
+# def add_sma(df: pd.DataFrame, 
+#             col_groupby: str, 
+#             col_value: str,
+#             col_date: str, 
+#             sma_list: list=[20, 50, 200]) -> pd.DataFrame:
     
-    # sort by date
-#     df = df.sort_values(by=col_date, ascending=True).reset_index(drop=True)
-    df = df.sort_values([col_groupby, col_date], ascending=[True, True])
+#     # sort by date
+# #     df = df.sort_values(by=col_date, ascending=True).reset_index(drop=True)
+#     df = df.sort_values([col_groupby, col_date], ascending=[True, True])
     
-    # add sma
-    # smas = [5, 10, 50, 100, 200]
-    for sma in sma_list:
-        c_name = 'ma_'+str(sma)
-        df[c_name] = df.groupby(col_groupby).rolling(sma)[col_value].mean().reset_index(drop=True)
+#     # add sma
+#     # smas = [5, 10, 50, 100, 200]
+#     for sma in sma_list:
+#         c_name = 'ma_'+str(sma)
+#         df[c_name] = df.groupby(col_groupby).rolling(sma)[col_value].mean().reset_index(drop=True)
         
-    return df
+#     return df
 
 
 # get crossover points
@@ -678,3 +679,63 @@ def add_crossover_pairs(df):
 
     return df
 
+
+class Visualiser():
+    
+    def __init__(self, conn):
+        self.conn = conn
+        
+    def get_all_data(self):
+        sql = "select symbol, date,closePrice from stocks.historical_prices"
+        return read_sql_to_df(sql=sql, connection=self.conn)
+    
+    def get_ticker_data(self, symbol):
+        sql = f"select symbol, date, closePrice from stocks.historical_prices where symbol = '{symbol}'"
+        return read_sql_to_df(sql=sql, connection=self.conn)
+    
+    def get_ticker_data_from_cache(self, df, symbol):
+        df_sub = df[df['symbol'] == symbol]\
+            .sort_values(by='date')\
+            .drop('symbol', axis=1)\
+            .reset_index(drop=True)
+        return df_sub
+
+    def get_all_symbols(self):
+        sql = f"select distinct symbol from stocks.historical_prices"
+        return read_sql_to_df(sql=sql, connection=self.conn)        
+        
+
+    def add_sma(self, df: pd.DataFrame, 
+                col_value: str,
+                col_date: str, 
+                sma_list: list=[50, 200]) -> pd.DataFrame:
+
+        df = df.sort_values([col_date], ascending=[True])
+
+        # add sma
+        for sma in sma_list:
+            c_name = 'ma_'+str(sma)
+            df[c_name] = df.rolling(sma)[col_value].mean().reset_index(drop=True)
+
+        return df
+
+    def add_crossover(self, df, short_col, long_col):
+        df['signal'] = np.where(df[short_col] > df[long_col], 1.0, 0.0)   
+        # Take the difference of the signals in order to generate actual trading orders
+        df['positions'] = df['signal'].diff()   
+        df = df.drop(['signal'], axis=1)
+
+        return df
+    
+
+    def plot_ticker_data(self, df):
+
+#         df = df.rename(columns={'date':'index'}).set_index('index')
+
+#         df = self.get_ticker_data(symbol)
+        fig = plt.figure(figsize=(15,15))
+        plt.plot(df.date, df.closePrice)
+        plt.title(f'Symbol {symbol}')
+        plt.tight_layout()
+        
+    
