@@ -1,0 +1,4 @@
+matplotlib==3.2.2
+jupyter==1.0.0
+black==21.4b2
+

@@ -1,17 +1,24 @@
-{ "GCP_STORAGE": {"bucket_name": "trading-bot-data-bucket",
-    "file_name": "config.json"},
-  "AMERITRADE": { "consumer_key": "FILLIN",
-    "exchange":"NYSE"},
-  "BIGQUERY":  {"project_id":  "trading-bot-261211",
-    "dataset_id": "equity_data",
-    "table_id": "daily_quote_data",
-    "historical_table_id": "historical_daily_quote_data"},
-  "ALPACA": {"base_url": "https://paper-api.alpaca.markets",
-    "alpaca_api_key": "FILLIN",
-    "alpaca_secret_key": "FILLIN",
-    "auto_trade": true},
-  "MOMENTUM": {"momentum_window": 125,
-    "minimum_momentum": 40},
-  "PORTFOLIO": {"portfolio_value": 200000,
-    "portfolio_size": 10}
+{
+   "AMERITRADE":{
+      "consumer_key":"FILLIN",
+      "exchange":"NYSE"
+   },
+   "DATA":{
+      "persist_historical_deltas":true
+   },
+   "FORECAST":{
+      "days_into_future":30
+   },
+   "EMAIL":{
+      "n_days_max":7,
+      "from_email":"<add_email>",
+      "to_email":"<add_email>",
+      "from_pw":"<add_password>"
+   },
+   "MYSQL":{
+      "username":"FILLIN",
+      "password":"FILLIN",
+      "database":"stocks",
+      "tablename_historical_data":"historical_prices_v2"
+   }
 }

@@ -1,233 +1,161 @@
-import os
 import logging
+import sys
 import argparse
-import pickle
 import json
-import alpaca_trade_api as tradeapi
-from datetime import date
-from utils import utils_trading_bot as utb
-from google.cloud import bigquery
+from utils import utils_data_build as udb
+from utils import utils_data_forecaster as udf
+from utils import utils_email as ue
+from utils import utils_shared as ush
 
-logging.basicConfig(format='%(asctime)s %(message)s',
-                    datefmt='%m/%d/%Y %I:%M:%S %p',
-                    level=logging.DEBUG)
+logging.basicConfig(
+    format="%(asctime)s %(message)s",
+    datefmt="%m/%d/%Y %I:%M:%S %p",
+    level=logging.DEBUG,
+)
 
 log = logging.getLogger("trading bot")
 
-BUCKET_NAME = 'trading-bot-data-bucket'
-FILE_NAME = 'config.json'
+FILE_NAME = "config.json"
+DATA_DIR = "data/"
 
 
 def build_history(config):
-    log.info('***** STARTING BUILDING HISTORICAL DATA *****')
+    log.info("***** STARTING BUILDING HISTORICAL DATA *****")
 
-    path_to_symbols = 'data/symbols_{}.data'.format(config['AMERITRADE']['exchange'])
+    log.debug("Getting fresh ticker data...")
+    symbols = udb.Ticker.get_symbols()
+    symbols_clean = list(symbols.keys())[0:3]
 
-    if os.path.exists(path_to_symbols):
-        with open(path_to_symbols, 'rb') as filehandle:
-            # read the data as binary data stream
-            symbols_clean = pickle.load(filehandle)
-    else:
-        log.debug('getting symbols for stock exchange {}'.format(config['AMERITRADE']['exchange']))
-        symbols_clean = utb.get_symbols(exchange=config['AMERITRADE']['exchange'])
+    log.info("Generating Data Store object...")
+    conn = ush.create_conn(**config["MYSQL"])
+    tablename_historical_prices = config["MYSQL"]["tablename_historical_data"]
+    data_store = udb.DataStore(conn, tablename_historical_prices)
 
-        with open(path_to_symbols, 'wb') as filehandle:
-            # store the data as binary data stream
-            pickle.dump(symbols_clean, filehandle)
-            log.debug('saving for stock exchange {} to {}'.format(config['AMERITRADE']['exchange'], path_to_symbols))
+    log.info("Generating Data Source object...")
+    data_source = udb.DataSource(api_key=config["AMERITRADE"]["consumer_key"])
 
-    stock_history_params = {'periodType': 'year',
-                            'period': 3,
-                            'frequencyType': 'daily',
-                            'frequency': 1}
-
-    save_option = 'replace'
-    conn = utb.create_conn(**config['MYSQL'])
-
-    # Checking that historical table exists
-    hist_table_exists = utb.check_table_exists(conn=conn,
-                                               tablename='historical_prices')
-                         
-        
-    if hist_table_exists:
-        log.info('historical data table exists already. Finding latest unix timestamp in table...')
-        latest_unix_date = utb.get_latest_unix_date(conn, 'historical_prices')
-    
-        # Check if the latest date in GBQ is one day before today's date. If it is then we do not need to update the
-        # table anymore
-        today = date.today().strftime("%Y-%m-%d")
-        latest_bigquery_date = utb.unix_timestamp_to_date(latest_unix_date)
-        date_increment = 60*60*24*1000
-        tomorrow_unix_date = latest_unix_date + date_increment
-        latest_bigquery_date_plus_one_day = utb.unix_timestamp_to_date(tomorrow_unix_date)
-
-        if today == latest_bigquery_date_plus_one_day:
-            log.info('No need to update historical share prices - latest date is already last trading day {}!'.format(latest_bigquery_date))
-            return
-        else:
-            log.info('Last date is {}; updating historical share prices...'.format(latest_bigquery_date))
-            save_option = 'append'
-
-        stock_history_params['startDate'] = tomorrow_unix_date
-
-    log.debug('getting historical trading data for each quote...')
-    log.debug('stock history params: \n{}'.format(stock_history_params))
-    df = utb.clean_historical_quotes_data(symbols_chunked=symbols_clean,
-                                          api_key=config['AMERITRADE']['consumer_key'],
-                                          stock_history_params=stock_history_params)
-
-    log.debug('shape of df before removing nans: {}'.format(df.shape))
-    log.debug('removing nans...')
-    df = df[df['closePrice'].notnull()].reset_index(drop=True)
-    log.debug('shape of df after removing nans: {}'.format(df.shape))
-    log.debug('df preview: \n{}'.format(df.head()))
-    log.info('save option chosen: {}'.format(save_option))
-    
-#     log.info('adding SMA columns...')
-#     df = utb.add_sma(df, col_groupby='symbol', 
-#                     col_value='closePrice', 
-#                     col_date='date', 
-#                     sma_list=[5, 10, 20, 50, 100, 200])
-
-#     log.info('adding crossover columns...')
-#     df = utb.add_crossover_pairs(df)
-    
-    if config['DATA']['persist_historical_deltas']:
-        log.debug('Loading data to msqyl...')    
-        utb.load_to_mysql(df=df, 
-                          tablename='historical_prices', 
-                          connection=conn, 
-                          if_exists=save_option)
-
-    else:
-        log.info('historical deltas not persisted')
-
-    log.info('***** FINISHED BUILDING HISTORICAL DATA *****')
-
-
-def buy_sell(config):
-    log.info('***** STARTING PORTFOLIO OPTIMISATION *****')
-
-    log.info('Loading in all historical stock prices')
-    df = utb.get_historical_stockprices(config)
-
-    log.info('getting current date..')
-    sorted_dates = sorted(set(df['date']))
-    current_data_date = sorted_dates[-1]
-    log.info('current date set as {}'.format(current_data_date))
-
-    log.info('computing momentum of each stock...')
-    df['momentum'] = df.groupby('symbol')['close'].rolling(
-        config['MOMENTUM']['momentum_window'],
-        min_periods=config['MOMENTUM']['minimum_momentum']
-    ).apply(utb.momentum_score).reset_index(level=0, drop=True)
-
-    # Current portfolio value
-    portfolio_value, df_pf = utb.calc_portfolio_value(config)
-
-    if portfolio_value > 0:
-        portfolio_value = portfolio_value
-    else:
-        portfolio_value = config['PORTFOLIO']['portfolio_value']
-
-    log.info('computing momentum stocks to buy...')
-    df_buy = utb.get_momentum_stocks(
-        df=df,
-        date=current_data_date,
-        portfolio_size=config['PORTFOLIO']['portfolio_size'],
-        cash=portfolio_value
+    log.info("Generating Data Maintenance object...")
+    data_maintenance = udb.DataMaintenance(
+        data_store=data_store, data_source=data_source, ticker_list=symbols_clean
     )
 
-    log.info('computing stocks to buy to optimise portfolio...')
-    df_buy_new = utb.buy_new_stock(
-        df_pf=df_pf,
-        df_buy=df_buy
+    data_maintenance.update_all()
+
+    log.info("***** FINISHED BUILDING HISTORICAL DATA *****")
+
+
+def forecast(config):
+    log.info("***** GENERATING FORECASTS... *****")
+
+    log.info("Generating Data Store object...")
+    conn = ush.create_conn(**config["MYSQL"])
+    tablename_historical_prices = config["MYSQL"]["tablename_historical_data"]
+    data_store = udb.DataStore(conn, tablename_historical_prices)
+
+    log.info("Initialising Forecaster...")
+    fc = udf.Forecaster(data_store=data_store, data_loc=DATA_DIR)
+
+    log.debug("Loading all stock data...")
+    df_all = fc.get_all_data()
+
+    log.debug("Loading all symbols data..")
+    symbols = fc.get_all_symbols()
+
+    log.debug("Forecasting for all symbols...")
+    df_buy_hist, df_sell_hist = fc.collect_all_future_signals(
+        df=df_all,
+        symbols=symbols,
+        days_to_forecast=config["FORECAST"]["days_into_future"],
     )
 
-    log.info('new stocks to purchase: \n{}'.format(df_buy_new))
+    log.info("***** COMPLETED FORECASTS *****")
 
-    log.info('Calculating stocks to sell...')
-    # Create a list of stocks to sell based on what is currently in our pf
-    sell_list = list(set(df_pf['symbol'].tolist()) - set(df_buy['symbol'].tolist()))
+    summary = {
+        "stage": "forecast",
+        "df_buy_hist": df_buy_hist.shape,
+        "df_sell_hist": df_sell_hist.shape,
+    }
 
-    df_sell = utb.sell_stocks(
-        df=df,
-        df_pf=df_pf,
-        sell_list=sell_list,
-        date=current_data_date
+    return summary
+
+
+def email(config):
+    """
+    Note - config = config['EAMAI']
+    Args:
+        config:
+
+    Returns:
+
+    """
+    log.info("***** EMAILING FUTURE SIGNALS.. *****")
+
+    n_days_max = config["n_days_max"]
+    mail = ue.Mail(
+        from_email=config["from_email"],
+        to_email=config["to_email"],
+        from_pw=config["from_pw"],
+        n_days_max=n_days_max,
+        data_loc=DATA_DIR,
+        df_buy_name="df_buy_hist",
+        df_sell_name="df_sell_hist",
     )
 
-    df_sell_final = utb.stock_diffs(
-        df_sell=df_sell,
-        df_pf=df_pf,
-        df_buy=df_buy
+    mail.send_buy_email()
+    mail.send_sell_email()
+
+    summary = {"stage": "emails", "n_days_max": n_days_max}
+
+    log.info("***** EMAILS SENT *****")
+
+    return summary
+
+
+def parse_args(sys_args: list) -> argparse.Namespace:
+    """Parse args. Separate function to enable unit testing.
+
+    Parameters
+    ----------
+    sys_args: iterable, sys.argv[1:]
+
+    Returns
+    -------
+    argparse.Namespace
+    """
+    parser = argparse.ArgumentParser(
+        description="trading bot",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    log.info(' stocks to sell: \n{}'.format(df_sell_final))
-
-    api = tradeapi.REST(
-        config['ALPACA']['alpaca_api_key'],
-        config['ALPACA']['alpaca_secret_key'],
-        config['ALPACA']['base_url'],
-        'v2'
+    parser.add_argument(
+        "--build_history",
+        "-b",
+        action="store_true",
+        help="Build and update share history",
     )
+    parser.add_argument(
+        "--forecast", "-f", action="store_true", help="Build time series forecasts"
+    )
+    parser.add_argument("--email", "-e", action="store_true", help="Email results")
 
-    if df_buy_new is not None:
-        if config['ALPACA']['auto_trade']:
-            utb.order_stock(df=df_buy_new,
-                            api=api,
-                            side='buy')
-            log.debug('buy order sent')
-        else:
-            buy_choice = input("do you want to confirm buy (yes/no)?")
-            if buy_choice == 'yes':
-                utb.order_stock(df=df_buy_new,
-                                api=api,
-                                side='buy')
-                log.debug('buy order sent')
-    else:
-        log.debug('No stocks to purchase')
-
-    if df_sell_final is not None:
-        if config['ALPACA']['auto_trade']:
-            utb.order_stock(df=df_sell_final,
-                            api=api,
-                            side='sell')
-            log.debug('sell order sent')
-        else:
-            sell_choice = input("do you want to confirm sell (yes/no)?")
-            if sell_choice == 'yes':
-                utb.order_stock(df=df_sell_final,
-                                api=api,
-                                side='sell')
-                log.debug('sell order sent')
-    else:
-        log.debug('No stocks to sell')
-
-    log.info('***** FINISHED OPTIMISING PORTFOLIO *****')
+    return parser.parse_args(sys_args)
 
 
-def main(config):
-    if args.purpose == 'build_history':
+def main(args: argparse.Namespace, config=dict):
+    log.debug("".format(args))
+
+    if args.build_history:
         build_history(config)
-    elif args.purpose == 'buy_sell':
-        buy_sell(config)
-    else:
-        raise ValueError('something went wrong with selection or code...')
+
+    if args.forecast:
+        forecast(config)
+
+    if args.email:
+        email(config["EMAIL"])
 
 
-if __name__ == '__main__':
-    # config = utb.get_config_from_gcp(bucket_name=BUCKET_NAME,
-    #                                  file_name=FILE_NAME)
-
-    with open('configs/config.json') as f:
+if __name__ == "__main__":
+    with open("configs/config.json") as f:
         config = json.load(f)
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--purpose',
-                        choices={'build_history',
-                                 'buy_sell'},
-                        help='What do you want the model to do?',
-                        required=True)
-    args = parser.parse_args()
-    main(config)
-    
+    args = parse_args(sys.argv[1:])
+    main(args, config)
