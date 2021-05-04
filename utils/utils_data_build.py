@@ -40,7 +40,7 @@ class Ticker:
         # Get a current list of all the stock symbols for the NYSE
         alpha = list(string.ascii_uppercase)
 
-        for each in alpha[0:1]:
+        for each in alpha:
             log.info("alpha: {}".format(each))
             url = "http://eoddata.com/stocklist/NYSE/{}.htm".format(each)
             resp = requests.get(url)
@@ -76,7 +76,7 @@ class DataStore:
             db_date = None
 
         if db_date is None:
-            start_date = datetime.strptime("2020-01-01", "%Y-%m-%d")
+            start_date = datetime.strptime("2018-01-01", "%Y-%m-%d")
             # Convert to unix for the API
             db_date = ush.unix_time_millis(start_date)
 

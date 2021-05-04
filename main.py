@@ -24,7 +24,7 @@ def build_history(config):
 
     log.debug("Getting fresh ticker data...")
     symbols = udb.Ticker.get_symbols()
-    symbols_clean = list(symbols.keys())[0:3]
+    symbols_clean = list(symbols.keys())
 
     log.info("Generating Data Store object...")
     conn = ush.create_conn(**config["MYSQL"])
