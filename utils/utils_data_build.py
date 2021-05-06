@@ -58,16 +58,16 @@ class Ticker:
 
 
 class DataStore:
-    def __init__(self, conn, tablename):
+    def __init__(self, conn, tablename_historical_prices):
         self.conn = conn
-        self.tablename = tablename
+        self.tablename_historical_prices = tablename_historical_prices
 
     def get_ticker_unix_latest_date(self, ticker):
 
         try:
             db_date = pd.read_sql(
                 "select max(datetime_unix) from stocks.{} where symbol = '{}'".format(
-                    self.tablename, ticker
+                    self.tablename_historical_prices, ticker
                 ),
                 self.conn,
             ).values[0][0]
@@ -91,20 +91,20 @@ class DataStore:
     def get(self, ticker):
         return pd.read_sql(
             "select * from stocks.{} where symbol = '{}' order by date asc".format(
-                self.tablename, ticker
+                self.tablename_historical_prices, ticker
             ),
             self.conn,
         )
 
     def append(self, df):
-        df.to_sql(con=self.conn, name=self.tablename, if_exists="append")
+        df.to_sql(con=self.conn, name=self.tablename_historical_prices, if_exists="append")
 
     def get_all(self):
-        return pd.read_sql("select * from stocks.{}".format(self.tablename), self.conn)
+        return pd.read_sql("select * from stocks.{}".format(self.tablename_historical_prices), self.conn)
 
     def get_tickers(self):
         return pd.read_sql(
-            "select distinct(symbol) from stocks.{}".format(self.tablename), self.conn
+            "select distinct(symbol) from stocks.{}".format(self.tablename_historical_prices), self.conn
         )['symbol'].tolist()
 
 
