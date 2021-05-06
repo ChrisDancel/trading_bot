@@ -1,4 +1,4 @@
-# Trading Bot (Recommender)
+# Recommender Trading Bot
 
 This project demonstrates a simple trading advice pipeline that takes into account 30 da forward forecasts 
 of company share prices and by extension, when certain simple moving average (SMA) indicator cross over. 
@@ -15,6 +15,7 @@ information on:
 
 1. Setup local database
     * example uses MYSQL with a named database called `stocks`
+    
     
 2. Setup API key with AMERITRADE
     * needed to get access to all tickers on NYSE

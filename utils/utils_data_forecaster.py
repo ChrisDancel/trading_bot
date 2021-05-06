@@ -1,4 +1,5 @@
 import logging
+
 log = logging.getLogger(__name__)
 
 import pandas as pd
@@ -14,33 +15,8 @@ class Forecaster:
         self.data_store = data_store
         self.data_loc = data_loc
 
-    def get_all_data(self) -> pd.DataFrame:
-        """
-        Read trading data from sql database for all records but for a select number of important columns
-        Returns:
-            df
-
-        """
-        cols_to_keep = ["symbol", "date", "closePrice", "open", "volume", "high", "low"]
-
-        df = self.data_store.get_all()
-
-        return df[cols_to_keep]
-
-    def get_ticker_data(self, symbol: str) -> pd.DataFrame:
-        """
-        Return data for a single ticker
-        Args:
-            symbol: name of symbol/ticker
-
-        Returns:
-            df
-
-        """
-
-        return self.data_store.get(symbol)
-
-    def get_ticker_data_from_cache(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    @staticmethod
+    def get_ticker_data_from_cache(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
         """
         Return ticker data from a dataframe containing all ticker data - lazy function
         Args:
@@ -52,23 +28,15 @@ class Forecaster:
         """
         df_sub = (
             df[df["symbol"] == symbol]
-            .sort_values(by="date")
-            .drop("symbol", axis=1)
-            .reset_index(drop=True)
+                .sort_values(by="date")
+                .drop("symbol", axis=1)
+                .reset_index(drop=True)
         )
         return df_sub
 
-    def get_all_symbols(self) -> list:
-        """
-        Get a list of all symbols within trading database
-        Returns:
-            symbol_list
-
-        """
-        return self.data_store.get_tickers()["symbol"].to_list()
-
+    @staticmethod
     def add_sma(
-        self, df: pd.DataFrame, col_value: str, col_date: str, sma_list=None
+            df: pd.DataFrame, col_value: str, col_date: str, sma_list=None
     ) -> pd.DataFrame:
         """
         Add simple moving average columns for a specified number of rolling average values
@@ -94,12 +62,12 @@ class Forecaster:
 
         return df
 
+    @staticmethod
     def add_crossover(
-        self,
-        df: pd.DataFrame,
-        short_col: str,
-        long_col: str,
-        col_name: str = "positions",
+            df: pd.DataFrame,
+            short_col: str,
+            long_col: str,
+            col_name: str = "positions",
     ):
         """
         Add column <col_name> to show when short term signal crosses above long term signal
@@ -120,7 +88,8 @@ class Forecaster:
 
         return df
 
-    def add_days(self, str_date: str, days_to_add: int) -> str:
+    @staticmethod
+    def add_days(str_date: str, days_to_add: int) -> str:
         """
         Add and return days to a date string
         Args:
@@ -187,26 +156,26 @@ class Forecaster:
         ]
         return forecast
 
-    def plot_ticker_data(self, df: pd.DataFrame):
-        """
-        Plot ticker data
-        Args:
-            df:
-
-        Returns:
-
-        """
-        plt.figure(figsize=(15, 15))
-        plt.plot(df.date, df.closePrice)
-        plt.tight_layout()
+    # def plot_ticker_data(self, df: pd.DataFrame):
+    #     """
+    #     Plot ticker data
+    #     Args:
+    #         df:
+    #
+    #     Returns:
+    #
+    #     """
+    #     plt.figure(figsize=(15, 15))
+    #     plt.plot(df.date, df.closePrice)
+    #     plt.tight_layout()
 
     def get_future_signals(
-        self,
-        df_all_tickers: pd.DataFrame,
-        ticker: str,
-        days_to_forecast: int,
-        long_signal: str = "50_200",
-        short_signal: str = "10_50",
+            self,
+            df_all_tickers: pd.DataFrame,
+            ticker: str,
+            days_to_forecast: int,
+            long_signal: str = "50_200",
+            short_signal: str = "10_50",
     ) -> (pd.DataFrame, pd.DataFrame):
         """
         Get future buy/sell signals for a given ticker based on SMA crossover positions.
@@ -231,6 +200,7 @@ class Forecaster:
 
         """
         df = self.get_ticker_data_from_cache(df_all_tickers, ticker)
+
         latest_date = df["date"].max()
         df = self.add_forecast(df, days_into_future=days_to_forecast)
 
@@ -240,10 +210,10 @@ class Forecaster:
         df = self.add_sma(df, "closePrice", "date")
 
         long_column_name = (
-            "positions_"
-            + select_long_signal.split("_")[0]
-            + "_"
-            + select_long_signal.split("_")[1]
+                "positions_"
+                + select_long_signal.split("_")[0]
+                + "_"
+                + select_long_signal.split("_")[1]
         )
         df = self.add_crossover(
             df,
@@ -253,10 +223,10 @@ class Forecaster:
         )
 
         short_column_name = (
-            "positions_"
-            + select_short_signal.split("_")[0]
-            + "_"
-            + select_short_signal.split("_")[1]
+                "positions_"
+                + select_short_signal.split("_")[0]
+                + "_"
+                + select_short_signal.split("_")[1]
         )
         df = self.add_crossover(
             df,
@@ -270,7 +240,7 @@ class Forecaster:
         df_buy_hist = df.loc[(df[long_column_name] == 1.0) & (df["date"] > latest_date)]
         df_sell_hist = df.loc[
             (df[short_column_name] == -1.0) & (df["date"] > latest_date)
-        ]
+            ]
 
         cols_to_not_show = [long_column_name, short_column_name]
 
@@ -280,7 +250,7 @@ class Forecaster:
         return df_buy_hist, df_sell_hist
 
     def collect_all_future_signals(
-        self, df: pd.DataFrame, symbols: list, days_to_forecast: int
+            self, df: pd.DataFrame, symbols: list, days_to_forecast: int
     ) -> (pd.DataFrame, pd.DataFrame):
         """
         Collect all future buy/sell signals for all tickers specified in <symbols>

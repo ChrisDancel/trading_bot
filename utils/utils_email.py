@@ -57,10 +57,13 @@ class Mail:
             df["day"] = df["date"].dt.day_name()
 
             str_n_days_max = str(self.n_days_max) + " days"
-            df = df[(df["date"] > current) & (df["future"] < str_n_days_max)]
+            df = df[(df["date"] > current) & (df["future"] < str_n_days_max )]
             df = df.sort_values(
                 by=["future", "ticker"], ascending=[True, True]
             ).reset_index(drop=True)
+
+            df['future'] = df['future'].apply(lambda x: x.days)  # return only days as integer
+            df['date'] = df['date'].apply(lambda x: x.strftime('%Y-%m-%d'))  # convert date to date string
 
             df_final = (
                 df.groupby(["future", "date", "ticker"])[["closePrice"]]

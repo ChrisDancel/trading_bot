@@ -56,10 +56,10 @@ def forecast(config):
     fc = udf.Forecaster(data_store=data_store, data_loc=DATA_DIR)
 
     log.debug("Loading all stock data...")
-    df_all = fc.get_all_data()
+    df_all = data_store.get_all()
 
     log.debug("Loading all symbols data..")
-    symbols = fc.get_all_symbols()
+    symbols = data_store.get_tickers()
 
     log.debug("Forecasting for all symbols...")
     df_buy_hist, df_sell_hist = fc.collect_all_future_signals(

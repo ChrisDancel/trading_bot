@@ -26,14 +26,13 @@ def clean_symbol_data(df):
 
 class Ticker:
     def __init__(self):
-        pass
+        self.symbols = {}
 
     @staticmethod
     def _clean_symbol(symbol):
         return symbol.replace(".", "-").split("-")[0]
 
-    @staticmethod
-    def get_symbols():
+    def get_symbols(self):
 
         symbols = {}
 
@@ -53,6 +52,7 @@ class Ticker:
                 clean_ticker_symbol = Ticker._clean_symbol(ticker_symbol)
                 symbols[clean_ticker_symbol] = ticker_name
 
+        self.symbols = symbols
         log.info(f"# symbols parsed: {len(symbols)}")
         return symbols
 
@@ -90,7 +90,7 @@ class DataStore:
 
     def get(self, ticker):
         return pd.read_sql(
-            "select * from stocks.{} where symbol = '{}'".format(
+            "select * from stocks.{} where symbol = '{}' order by date asc".format(
                 self.tablename, ticker
             ),
             self.conn,
@@ -105,7 +105,7 @@ class DataStore:
     def get_tickers(self):
         return pd.read_sql(
             "select distinct(symbol) from stocks.{}".format(self.tablename), self.conn
-        )
+        )['symbol'].tolist()
 
 
 class DataSource:
