@@ -58,9 +58,10 @@ class Ticker:
 
 
 class DataStore:
-    def __init__(self, conn, tablename_historical_prices):
+    def __init__(self, conn, tablename_historical_prices, tablename_recommendations):
         self.conn = conn
         self.tablename_historical_prices = tablename_historical_prices
+        self.tablename_recommendations = tablename_recommendations
 
     def get_ticker_unix_latest_date(self, ticker):
 
@@ -106,6 +107,13 @@ class DataStore:
         return pd.read_sql(
             "select distinct(symbol) from stocks.{}".format(self.tablename_historical_prices), self.conn
         )['symbol'].tolist()
+
+    def append_recommendations(self, df):
+
+        if df.empty:
+            log.info('no recommendations to append')
+        else:
+            df.to_sql(con=self.conn, name=self.tablename_recommendations, if_exists="append", index=False)
 
 
 class DataSource:

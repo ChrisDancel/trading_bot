@@ -4,6 +4,7 @@ log = logging.getLogger(__name__)
 import os
 import pandas as pd
 import numpy as np
+from datetime import date
 from smtplib import SMTP
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -66,18 +67,28 @@ class Mail:
             df['date'] = df['date'].apply(lambda x: x.strftime('%Y-%m-%d'))  # convert date to date string
 
             df_final = (
-                df.groupby(["future", "date", "ticker"])[["closePrice"]]
+                df.groupby(["future", "date", "ticker", "created_at", "action"])[["closePrice"]]
                 .max()
                 .reset_index()
             )
             return df_final
 
-    def get_email_data(self, df_path):
-        df = pd.read_pickle(df_path)
+    def get_buy_email_data(self):
+        df = pd.read_pickle(os.path.join(self.data_loc, self.df_buy_name))
+        df["created_at"] = date.today().strftime("%Y-%m-%d")
+        df["action"] = "buy"
+
+        return self.filter_for_specific_future(df)
+
+    def get_sell_email_data(self):
+        df = pd.read_pickle(os.path.join(self.data_loc, self.df_sell_name))
+        df["created_at"] = date.today().strftime("%Y-%m-%d")
+        df["action"] = "sell"
+
         return self.filter_for_specific_future(df)
 
     def send_buy_email(self):
-        data = self.get_email_data(os.path.join(self.data_loc, self.df_buy_name))
+        data = self.get_buy_email_data()
 
         if data.empty:
             log.info("no buy data to email")
@@ -88,7 +99,7 @@ class Mail:
         return "Mail sent successfully."
 
     def send_sell_email(self):
-        data = self.get_email_data(os.path.join(self.data_loc, self.df_sell_name))
+        data = self.get_sell_email_data()
 
         if data.shape[0] == 0:
             log.info("no sell data to email")

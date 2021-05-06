@@ -2,6 +2,7 @@ import logging
 import sys
 import argparse
 import json
+from datetime import date
 from utils import utils_data_build as udb
 from utils import utils_data_forecaster as udf
 from utils import utils_email as ue
@@ -28,8 +29,11 @@ def build_history(config):
 
     log.info("Generating Data Store object...")
     conn = ush.create_conn(**config["MYSQL"])
-    tablename_historical_prices = config["MYSQL"]["tablename_historical_data"]
-    data_store = udb.DataStore(conn, tablename_historical_prices)
+    data_store = udb.DataStore(
+        conn,
+        tablename_historical_prices=config["MYSQL"]["tablename_historical_data"],
+        tablename_recommendations=config["MYSQL"]["tablename_recommendations"],
+    )
 
     log.info("Generating Data Source object...")
     data_source = udb.DataSource(api_key=config["AMERITRADE"]["consumer_key"])
@@ -111,6 +115,55 @@ def email(config):
     return summary
 
 
+def persist(config):
+    """
+    Persist buy and sell recommendations from a particular time period to file
+    Args:
+        config:
+
+    Returns:
+
+    """
+
+    log.info("***** PERSISTING FUTURE SIGNALS TO DATA STORE.. *****")
+
+    config_email = config['EMAIL']
+
+    n_days_max = config_email["n_days_max"]
+    mail = ue.Mail(
+        from_email=config_email["from_email"],
+        to_email=config_email["to_email"],
+        from_pw=config_email["from_pw"],
+        n_days_max=n_days_max,
+        data_loc=DATA_DIR,
+        df_buy_name="df_buy_hist",
+        df_sell_name="df_sell_hist",
+    )
+
+    df_buy = mail.get_buy_email_data()
+    df_sell = mail.get_sell_email_data()
+
+    today_date = date.today().strftime("%Y-%m-%d")
+
+    log.info("Generating Data Store object...")
+    conn = ush.create_conn(**config["MYSQL"])
+    data_store = udb.DataStore(
+        conn,
+        tablename_historical_prices=config["MYSQL"]["tablename_historical_data"],
+        tablename_recommendations=config["MYSQL"]["tablename_recommendations"],
+    )
+
+    log.info(f"Persisting recommendations for date {today_date}")
+    data_store.append_recommendations(df_buy)
+    data_store.append_recommendations(df_sell)
+
+    summary = {"stage": "persist", "df_buy": df_buy.shape, "df_sell": df_sell.shape}
+
+    log.info("***** FINISHED PERSISTING FUTURE SIGNALS TO DATA STORE *****")
+
+    return summary
+
+
 def parse_args(sys_args: list) -> argparse.Namespace:
     """Parse args. Separate function to enable unit testing.
 
@@ -136,6 +189,12 @@ def parse_args(sys_args: list) -> argparse.Namespace:
         "--forecast", "-f", action="store_true", help="Build time series forecasts"
     )
     parser.add_argument("--email", "-e", action="store_true", help="Email results")
+    parser.add_argument(
+        "--persist",
+        "-p",
+        action="store_true",
+        help="persist recommendations to data store",
+    )
 
     return parser.parse_args(sys_args)
 
@@ -151,6 +210,9 @@ def main(args: argparse.Namespace, config=dict):
 
     if args.email:
         email(config["EMAIL"])
+
+    if args.persist:
+        persist(config)
 
 
 if __name__ == "__main__":

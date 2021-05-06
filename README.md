@@ -30,13 +30,17 @@ information on:
 4. Pull and save historical share price data
     * run `python3 main.py -b`
     
-5. Forecast signals
+5. Forecast for signals
     * run `python3 main.py -f`
     * will persist buy and sell signals to file in `data/`
     
 6. Email signals
     * run `python3 main -e`
     * will email signals
+    
+7. Persist signals
+    * run `python3 main -p`
+    * persist buy/sell signals to table `recommendations`
     
 #### Disclaimer
 This is my personal project aimed purely as a hobby to practice coding and to learn more about the stock market. 
