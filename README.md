@@ -11,7 +11,7 @@ information on:
 * Buy signal: when SMA_50 positively crosses SMA_200
 * Short signal: when SMA_10 negatively crosses SMA_50
 
-### Intructions on running the code
+### Instructions on running the code
 
 1. Setup local database
     * example uses MYSQL with a named database called `stocks`
@@ -41,7 +41,21 @@ information on:
 7. Persist signals
     * run `python3 main -p`
     * persist buy/sell signals to table `recommendations`
+
+### Automating process with Airflow
+
+8. Setup airflow locally 
+    * there are numerous websites to help setup airflow
+    * currently this has been done on mac
+    * once setup, copy `trading_bot_dag.py` into `dags/` folder
+    * change project paths for `PROJECT_DIR` and `PYTHON_ENV`
+    * run dag
     
+Note:
+   * PROJECT_DIR is the local directory that this project is located
+   * PYTHON_ENV is the python path for the virtual environment of this project
+
+
 #### Disclaimer
 This is my personal project aimed purely as a hobby to practice coding and to learn more about the stock market. 
 
